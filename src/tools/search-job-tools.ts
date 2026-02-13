@@ -9,15 +9,13 @@ import {
 } from "../types/search.js";
 
 const POLL_TIMEOUT_MS = 120_000;
-const INITIAL_POLL_INTERVAL_MS = 500;
-const MAX_POLL_INTERVAL_MS = 5_000;
+const POLL_INTERVAL_MS = 2_000;
 
 async function pollUntilDone(
   client: SumoClient,
   jobId: string
 ): Promise<SearchJobStatus> {
   const start = Date.now();
-  let interval = INITIAL_POLL_INTERVAL_MS;
 
   while (Date.now() - start < POLL_TIMEOUT_MS) {
     const status = await client.get<SearchJobStatus>(
@@ -38,8 +36,7 @@ async function pollUntilDone(
       );
     }
 
-    await new Promise((resolve) => setTimeout(resolve, interval));
-    interval = Math.min(interval * 2, MAX_POLL_INTERVAL_MS);
+    await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
   }
 
   // Attempt cleanup on timeout

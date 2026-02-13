@@ -90,23 +90,3 @@ export interface TimeRangeLiteral {
 
 export type TimeRange = TimeRangeRelative | TimeRangeAbsolute | TimeRangeLiteral;
 
-export interface SavedLogSearch {
-  id?: string;
-  name: string;
-  description?: string;
-  queryString: string;
-  timeRange: TimeRange;
-  parsingMode?: "Manual" | "AutoParse";
-  runByReceiptTime?: boolean;
-  queryParameters?: Array<{
-    name: string;
-    description?: string;
-    dataType: string;
-    value: string;
-  }>;
-}
-
-export interface SavedLogSearchListResponse {
-  data: SavedLogSearch[];
-  next?: string;
-}

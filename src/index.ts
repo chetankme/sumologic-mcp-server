@@ -4,7 +4,6 @@ import { ConfigManager } from "./config/config-manager.js";
 import { SumoClient } from "./client/sumo-client.js";
 import { registerConfigTools } from "./tools/config-tools.js";
 import { registerSearchJobTools } from "./tools/search-job-tools.js";
-import { registerLogSearchTools } from "./tools/log-search-tools.js";
 import { registerMetricsTools } from "./tools/metrics-tools.js";
 
 async function main(): Promise<void> {
@@ -23,7 +22,6 @@ async function main(): Promise<void> {
   // Register all tools
   registerConfigTools(server, configManager);
   registerSearchJobTools(server, client);
-  registerLogSearchTools(server, client);
   registerMetricsTools(server, client);
 
   // Connect via stdio
