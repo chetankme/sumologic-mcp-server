@@ -12,7 +12,7 @@ export function registerConfigTools(
     {
       name: z.string().describe("Friendly name for this account (e.g. 'us1-prod')"),
       deployment: z
-        .enum(["AU", "CA", "DE", "EU", "FED", "IN", "JP", "KR", "US1", "US2"])
+        .enum(["AU", "CA", "DE", "EU", "FED", "IN", "JP", "KR", "LONG", "US1", "US2"])
         .describe("Sumo Logic deployment region"),
       accessId: z.string().describe("Sumo Logic Access ID"),
       accessKey: z.string().describe("Sumo Logic Access Key"),

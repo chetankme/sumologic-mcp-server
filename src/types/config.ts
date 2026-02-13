@@ -7,6 +7,7 @@ export type DeploymentRegion =
   | "IN"
   | "JP"
   | "KR"
+  | "LONG"
   | "US1"
   | "US2";
 

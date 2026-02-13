@@ -9,6 +9,7 @@ export const DEPLOYMENT_URLS: Record<DeploymentRegion, string> = {
   IN: "https://api.in.sumologic.com/api",
   JP: "https://api.jp.sumologic.com/api",
   KR: "https://api.kr.sumologic.com/api",
+  LONG: "https://long-api.sumologic.net/api",
   US1: "https://api.sumologic.com/api",
   US2: "https://api.us2.sumologic.com/api",
 };
