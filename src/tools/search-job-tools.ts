@@ -1,0 +1,366 @@
+import { z } from "zod";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { SumoClient } from "../client/sumo-client.js";
+import {
+  CreateSearchJobResponse,
+  SearchJobStatus,
+  SearchMessagesResponse,
+  SearchRecordsResponse,
+} from "../types/search.js";
+
+const POLL_TIMEOUT_MS = 120_000;
+const INITIAL_POLL_INTERVAL_MS = 500;
+const MAX_POLL_INTERVAL_MS = 5_000;
+
+async function pollUntilDone(
+  client: SumoClient,
+  jobId: string
+): Promise<SearchJobStatus> {
+  const start = Date.now();
+  let interval = INITIAL_POLL_INTERVAL_MS;
+
+  while (Date.now() - start < POLL_TIMEOUT_MS) {
+    const status = await client.get<SearchJobStatus>(
+      `/v1/search/jobs/${jobId}`
+    );
+
+    if (status.state === "DONE GATHERING RESULTS") {
+      return status;
+    }
+
+    if (status.state === "CANCELLED") {
+      throw new Error("Search job was cancelled");
+    }
+
+    if (status.state === "FORCE PAUSED") {
+      throw new Error(
+        "Search job was force paused by Sumo Logic (query too expensive)"
+      );
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, interval));
+    interval = Math.min(interval * 2, MAX_POLL_INTERVAL_MS);
+  }
+
+  // Attempt cleanup on timeout
+  try {
+    await client.delete(`/v1/search/jobs/${jobId}`);
+  } catch {
+    // best-effort cleanup
+  }
+  throw new Error(
+    `Search job timed out after ${POLL_TIMEOUT_MS / 1000}s. The query may be too broad.`
+  );
+}
+
+function formatMessages(resp: SearchMessagesResponse): string {
+  if (!resp.messages || resp.messages.length === 0) {
+    return "No messages found.";
+  }
+
+  const lines = resp.messages.map((msg, i) => {
+    const raw = msg.map["_raw"] || JSON.stringify(msg.map);
+    const time = msg.map["_messagetime"] || msg.map["_receipttime"] || "";
+    return `[${i + 1}] ${time ? time + " " : ""}${raw}`;
+  });
+
+  return `${resp.messages.length} messages:\n${lines.join("\n")}`;
+}
+
+function formatRecords(resp: SearchRecordsResponse): string {
+  if (!resp.records || resp.records.length === 0) {
+    return "No records found.";
+  }
+
+  const fieldNames = resp.fields.map((f) => f.name);
+  const header = fieldNames.join(" | ");
+  const rows = resp.records.map((rec) =>
+    fieldNames.map((f) => rec.map[f] ?? "").join(" | ")
+  );
+
+  return `${resp.records.length} records:\n${header}\n${"─".repeat(header.length)}\n${rows.join("\n")}`;
+}
+
+export function registerSearchJobTools(
+  server: McpServer,
+  client: SumoClient
+): void {
+  // High-level search: create, poll, fetch, cleanup
+  server.tool(
+    "sumo_search",
+    "Run a Sumo Logic search query and return results (handles job lifecycle automatically)",
+    {
+      query: z.string().describe("Sumo Logic query string"),
+      from: z
+        .string()
+        .describe(
+          "Start time (ISO 8601 format, e.g. '2024-01-01T00:00:00Z' or relative like '2024-01-01T00:00:00-05:00')"
+        ),
+      to: z
+        .string()
+        .describe(
+          "End time (ISO 8601 format, e.g. '2024-01-01T01:00:00Z' or relative)"
+        ),
+      timeZone: z
+        .string()
+        .optional()
+        .describe("Time zone (default: UTC), e.g. 'America/Los_Angeles'"),
+      limit: z
+        .number()
+        .optional()
+        .describe("Max number of results to return (default: 100, max: 10000)"),
+      byReceiptTime: z
+        .boolean()
+        .optional()
+        .describe("Use receipt time instead of message time (default: false)"),
+    },
+    async ({ query, from, to, timeZone, limit, byReceiptTime }) => {
+      try {
+        const resultLimit = Math.min(limit ?? 100, 10000);
+
+        // 1. Create job
+        const job = await client.post<CreateSearchJobResponse>(
+          "/v1/search/jobs",
+          {
+            query,
+            from,
+            to,
+            timeZone: timeZone ?? "UTC",
+            byReceiptTime: byReceiptTime ?? false,
+          }
+        );
+
+        const jobId = job.id;
+
+        try {
+          // 2. Poll until done
+          const status = await pollUntilDone(client, jobId);
+
+          // 3. Fetch results - records if aggregation, messages otherwise
+          let resultText: string;
+
+          if (status.recordCount > 0) {
+            const records = await client.get<SearchRecordsResponse>(
+              `/v1/search/jobs/${jobId}/records`,
+              { offset: 0, limit: resultLimit }
+            );
+            resultText = formatRecords(records);
+          } else {
+            const messages = await client.get<SearchMessagesResponse>(
+              `/v1/search/jobs/${jobId}/messages`,
+              { offset: 0, limit: resultLimit }
+            );
+            resultText = formatMessages(messages);
+          }
+
+          // Add warnings if any
+          const warnings = status.pendingWarnings;
+          const warningText =
+            warnings && warnings.length > 0
+              ? `\n\nWarnings:\n${warnings.join("\n")}`
+              : "";
+
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Search completed (${status.messageCount} total messages, ${status.recordCount} total records).\n\n${resultText}${warningText}`,
+              },
+            ],
+          };
+        } finally {
+          // 4. Cleanup
+          try {
+            await client.delete(`/v1/search/jobs/${jobId}`);
+          } catch {
+            // best-effort cleanup
+          }
+        }
+      } catch (err) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Search error: ${err instanceof Error ? err.message : String(err)}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // Low-level: Create search job
+  server.tool(
+    "sumo_create_search_job",
+    "Create an async Sumo Logic search job (returns job ID for polling)",
+    {
+      query: z.string().describe("Sumo Logic query string"),
+      from: z.string().describe("Start time (ISO 8601)"),
+      to: z.string().describe("End time (ISO 8601)"),
+      timeZone: z.string().optional().describe("Time zone (default: UTC)"),
+      byReceiptTime: z
+        .boolean()
+        .optional()
+        .describe("Use receipt time (default: false)"),
+    },
+    async ({ query, from, to, timeZone, byReceiptTime }) => {
+      try {
+        const job = await client.post<CreateSearchJobResponse>(
+          "/v1/search/jobs",
+          {
+            query,
+            from,
+            to,
+            timeZone: timeZone ?? "UTC",
+            byReceiptTime: byReceiptTime ?? false,
+          }
+        );
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Search job created. Job ID: ${job.id}\nUse sumo_get_search_job_status to check progress.`,
+            },
+          ],
+        };
+      } catch (err) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Error: ${err instanceof Error ? err.message : String(err)}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // Low-level: Get search job status
+  server.tool(
+    "sumo_get_search_job_status",
+    "Get the status of a Sumo Logic search job",
+    {
+      jobId: z.string().describe("Search job ID"),
+    },
+    async ({ jobId }) => {
+      try {
+        const status = await client.get<SearchJobStatus>(
+          `/v1/search/jobs/${jobId}`
+        );
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Job ${jobId}:\n  State: ${status.state}\n  Messages: ${status.messageCount}\n  Records: ${status.recordCount}${
+                status.pendingWarnings?.length
+                  ? `\n  Warnings: ${status.pendingWarnings.join("; ")}`
+                  : ""
+              }${
+                status.pendingErrors?.length
+                  ? `\n  Errors: ${status.pendingErrors.join("; ")}`
+                  : ""
+              }`,
+            },
+          ],
+        };
+      } catch (err) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Error: ${err instanceof Error ? err.message : String(err)}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // Low-level: Get messages
+  server.tool(
+    "sumo_get_search_job_messages",
+    "Get log messages from a completed Sumo Logic search job",
+    {
+      jobId: z.string().describe("Search job ID"),
+      offset: z.number().optional().describe("Result offset (default: 0)"),
+      limit: z
+        .number()
+        .optional()
+        .describe("Number of messages to return (default: 100, max: 10000)"),
+    },
+    async ({ jobId, offset, limit }) => {
+      try {
+        const resp = await client.get<SearchMessagesResponse>(
+          `/v1/search/jobs/${jobId}/messages`,
+          { offset: offset ?? 0, limit: Math.min(limit ?? 100, 10000) }
+        );
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: formatMessages(resp),
+            },
+          ],
+        };
+      } catch (err) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Error: ${err instanceof Error ? err.message : String(err)}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // Low-level: Get records
+  server.tool(
+    "sumo_get_search_job_records",
+    "Get aggregated records from a completed Sumo Logic search job",
+    {
+      jobId: z.string().describe("Search job ID"),
+      offset: z.number().optional().describe("Result offset (default: 0)"),
+      limit: z
+        .number()
+        .optional()
+        .describe("Number of records to return (default: 100, max: 10000)"),
+    },
+    async ({ jobId, offset, limit }) => {
+      try {
+        const resp = await client.get<SearchRecordsResponse>(
+          `/v1/search/jobs/${jobId}/records`,
+          { offset: offset ?? 0, limit: Math.min(limit ?? 100, 10000) }
+        );
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: formatRecords(resp),
+            },
+          ],
+        };
+      } catch (err) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Error: ${err instanceof Error ? err.message : String(err)}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+}
