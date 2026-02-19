@@ -107,11 +107,11 @@ export function registerMetricsTools(
       endTime: z.union([z.number(), z.string()]).optional()
         .describe("End time as epoch millis (number) or relative string. Defaults to now."),
       requestedDataPoints: z.number().optional()
-        .describe("Requested number of data points (default: 600)"),
+        .describe("Requested number of data points (default: 50)"),
       maxDataPoints: z.number().optional()
-        .describe("Maximum data points per time series (default: 800)"),
+        .describe("Maximum data points per time series (default: 100)"),
       maxTotalDataPoints: z.number().optional()
-        .describe("Maximum total data points across all time series (default: 50000)"),
+        .describe("Maximum total data points across all time series (default: 5000)"),
       desiredQuantizationInSecs: z.number().optional()
         .describe("Desired quantization in seconds (default: 60)"),
     },
@@ -122,9 +122,9 @@ export function registerMetricsTools(
           startTime: resolveTimeToEpochMillis(startTime, -15 * 60000),
           endTime: resolveTimeToEpochMillis(endTime),
         };
-        if (requestedDataPoints !== undefined) body.requestedDataPoints = requestedDataPoints;
-        if (maxDataPoints !== undefined) body.maxDataPoints = maxDataPoints;
-        if (maxTotalDataPoints !== undefined) body.maxTotalDataPoints = maxTotalDataPoints;
+        body.requestedDataPoints = requestedDataPoints ?? 50;
+        body.maxDataPoints = maxDataPoints ?? 100;
+        body.maxTotalDataPoints = maxTotalDataPoints ?? 5000;
         body.desiredQuantizationInSecs = desiredQuantizationInSecs ?? 60;
 
         const resp = await client.post<MetricsQueryResponse>(
@@ -167,11 +167,11 @@ export function registerMetricsTools(
       endTime: z.union([z.number(), z.string()]).optional()
         .describe("End time as epoch millis (number) or relative string. Defaults to now."),
       requestedDataPoints: z.number().optional()
-        .describe("Requested number of data points (default: 600)"),
+        .describe("Requested number of data points (default: 50)"),
       maxDataPoints: z.number().optional()
-        .describe("Maximum data points per time series (default: 800)"),
+        .describe("Maximum data points per time series (default: 100)"),
       maxTotalDataPoints: z.number().optional()
-        .describe("Maximum total data points across all time series (default: 50000)"),
+        .describe("Maximum total data points across all time series (default: 5000)"),
       desiredQuantizationInSecs: z.number().optional()
         .describe("Desired quantization in seconds (default: 60)"),
     },
@@ -195,9 +195,9 @@ export function registerMetricsTools(
           startTime: resolveTimeToEpochMillis(startTime, -15 * 60000),
           endTime: resolveTimeToEpochMillis(endTime),
         };
-        if (requestedDataPoints !== undefined) body.requestedDataPoints = requestedDataPoints;
-        if (maxDataPoints !== undefined) body.maxDataPoints = maxDataPoints;
-        if (maxTotalDataPoints !== undefined) body.maxTotalDataPoints = maxTotalDataPoints;
+        body.requestedDataPoints = requestedDataPoints ?? 50;
+        body.maxDataPoints = maxDataPoints ?? 100;
+        body.maxTotalDataPoints = maxTotalDataPoints ?? 5000;
         body.desiredQuantizationInSecs = desiredQuantizationInSecs ?? 60;
 
         const accounts = configManager.listAccounts();
