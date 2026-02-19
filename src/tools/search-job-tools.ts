@@ -161,7 +161,8 @@ async function searchForAccount(
 export function registerSearchJobTools(
   server: McpServer,
   client: SumoClient,
-  configManager: ConfigManager
+  configManager: ConfigManager,
+  options?: { enableLowLevelTools?: boolean }
 ): void {
   // High-level search: create, poll, fetch, cleanup
   server.tool(
@@ -273,6 +274,7 @@ export function registerSearchJobTools(
     }
   );
 
+  if (options?.enableLowLevelTools) {
   // Low-level: Create search job
   server.tool(
     "sumo_create_search_job",
@@ -455,6 +457,8 @@ export function registerSearchJobTools(
       }
     }
   );
+
+  } // end if enableLowLevelTools
 
   // Multi-account: search all accounts in parallel
   server.tool(

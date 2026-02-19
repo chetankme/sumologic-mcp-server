@@ -20,8 +20,9 @@ async function main(): Promise<void> {
   const client = new SumoClient(configManager);
 
   // Register all tools
+  const enableLowLevelTools = process.env.SUMO_ENABLE_LOW_LEVEL_TOOLS === 'true';
   registerConfigTools(server, configManager);
-  registerSearchJobTools(server, client, configManager);
+  registerSearchJobTools(server, client, configManager, { enableLowLevelTools });
   registerMetricsTools(server, client, configManager);
 
   // Connect via stdio
