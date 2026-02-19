@@ -30,6 +30,10 @@ export class ConfigManager {
     await writeFile(CONFIG_FILE, JSON.stringify(this.config, null, 2), "utf-8");
   }
 
+  getConfigPath(): string {
+    return CONFIG_FILE;
+  }
+
   getAccount(name: string): AccountConfig | null {
     return this.config.accounts[name] ?? null;
   }
