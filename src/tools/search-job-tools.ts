@@ -28,7 +28,7 @@ function addLimitIfNeeded(query: string, limit: number): string {
 async function pollUntilDone(
   client: SumoClient,
   jobId: string,
-  accountName?: string
+  accountName: string
 ): Promise<SearchJobStatus> {
   const start = Date.now();
 
@@ -168,6 +168,7 @@ export function registerSearchJobTools(
     "sumo_search",
     "Run a Sumo Logic search query and return results (handles job lifecycle automatically)",
     {
+      account: z.string().describe("Name of the Sumo Logic account to use"),
       query: z.string().describe("Sumo Logic query string"),
       from: z
         .string()
@@ -192,7 +193,7 @@ export function registerSearchJobTools(
         .optional()
         .describe("Use receipt time instead of message time (default: false)"),
     },
-    async ({ query, from, to, timeZone, limit, byReceiptTime }) => {
+    async ({ account, query, from, to, timeZone, limit, byReceiptTime }) => {
       try {
         const resultLimit = Math.min(limit ?? 100, 10000);
         const finalQuery = addLimitIfNeeded(query, resultLimit);
@@ -206,14 +207,15 @@ export function registerSearchJobTools(
             to,
             timeZone: timeZone ?? "UTC",
             byReceiptTime: byReceiptTime ?? false,
-          }
+          },
+          account
         );
 
         const jobId = job.id;
 
         try {
           // 2. Poll until done
-          const status = await pollUntilDone(client, jobId);
+          const status = await pollUntilDone(client, jobId, account);
 
           // 3. Fetch results - records if aggregation, messages otherwise
           let resultText: string;
@@ -221,13 +223,15 @@ export function registerSearchJobTools(
           if (status.recordCount > 0) {
             const records = await client.get<SearchRecordsResponse>(
               `/v1/search/jobs/${jobId}/records`,
-              { offset: 0, limit: resultLimit }
+              { offset: 0, limit: resultLimit },
+              account
             );
             resultText = formatRecords(records);
           } else {
             const messages = await client.get<SearchMessagesResponse>(
               `/v1/search/jobs/${jobId}/messages`,
-              { offset: 0, limit: resultLimit }
+              { offset: 0, limit: resultLimit },
+              account
             );
             resultText = formatMessages(messages);
           }
@@ -250,7 +254,7 @@ export function registerSearchJobTools(
         } finally {
           // 4. Cleanup
           try {
-            await client.delete(`/v1/search/jobs/${jobId}`);
+            await client.delete(`/v1/search/jobs/${jobId}`, account);
           } catch {
             // best-effort cleanup
           }
@@ -274,6 +278,7 @@ export function registerSearchJobTools(
     "sumo_create_search_job",
     "Create an async Sumo Logic search job (returns job ID for polling)",
     {
+      account: z.string().describe("Name of the Sumo Logic account to use"),
       query: z.string().describe("Sumo Logic query string"),
       from: z.string().describe("Start time (ISO 8601)"),
       to: z.string().describe("End time (ISO 8601)"),
@@ -283,7 +288,7 @@ export function registerSearchJobTools(
         .optional()
         .describe("Use receipt time (default: false)"),
     },
-    async ({ query, from, to, timeZone, byReceiptTime }) => {
+    async ({ account, query, from, to, timeZone, byReceiptTime }) => {
       try {
         const job = await client.post<CreateSearchJobResponse>(
           "/v1/search/jobs",
@@ -293,7 +298,8 @@ export function registerSearchJobTools(
             to,
             timeZone: timeZone ?? "UTC",
             byReceiptTime: byReceiptTime ?? false,
-          }
+          },
+          account
         );
 
         return {
@@ -323,12 +329,15 @@ export function registerSearchJobTools(
     "sumo_get_search_job_status",
     "Get the status of a Sumo Logic search job",
     {
+      account: z.string().describe("Name of the Sumo Logic account to use"),
       jobId: z.string().describe("Search job ID"),
     },
-    async ({ jobId }) => {
+    async ({ account, jobId }) => {
       try {
         const status = await client.get<SearchJobStatus>(
-          `/v1/search/jobs/${jobId}`
+          `/v1/search/jobs/${jobId}`,
+          undefined,
+          account
         );
 
         return {
@@ -366,6 +375,7 @@ export function registerSearchJobTools(
     "sumo_get_search_job_messages",
     "Get log messages from a completed Sumo Logic search job",
     {
+      account: z.string().describe("Name of the Sumo Logic account to use"),
       jobId: z.string().describe("Search job ID"),
       offset: z.number().optional().describe("Result offset (default: 0)"),
       limit: z
@@ -373,11 +383,12 @@ export function registerSearchJobTools(
         .optional()
         .describe("Number of messages to return (default: 100, max: 10000)"),
     },
-    async ({ jobId, offset, limit }) => {
+    async ({ account, jobId, offset, limit }) => {
       try {
         const resp = await client.get<SearchMessagesResponse>(
           `/v1/search/jobs/${jobId}/messages`,
-          { offset: offset ?? 0, limit: Math.min(limit ?? 100, 10000) }
+          { offset: offset ?? 0, limit: Math.min(limit ?? 100, 10000) },
+          account
         );
 
         return {
@@ -407,6 +418,7 @@ export function registerSearchJobTools(
     "sumo_get_search_job_records",
     "Get aggregated records from a completed Sumo Logic search job",
     {
+      account: z.string().describe("Name of the Sumo Logic account to use"),
       jobId: z.string().describe("Search job ID"),
       offset: z.number().optional().describe("Result offset (default: 0)"),
       limit: z
@@ -414,11 +426,12 @@ export function registerSearchJobTools(
         .optional()
         .describe("Number of records to return (default: 100, max: 10000)"),
     },
-    async ({ jobId, offset, limit }) => {
+    async ({ account, jobId, offset, limit }) => {
       try {
         const resp = await client.get<SearchRecordsResponse>(
           `/v1/search/jobs/${jobId}/records`,
-          { offset: offset ?? 0, limit: Math.min(limit ?? 100, 10000) }
+          { offset: offset ?? 0, limit: Math.min(limit ?? 100, 10000) },
+          account
         );
 
         return {
@@ -480,7 +493,7 @@ export function registerSearchJobTools(
             content: [
               {
                 type: "text" as const,
-                text: "No accounts configured. Use sumo_add_account to add one.",
+                text: "No accounts configured.",
               },
             ],
             isError: true,

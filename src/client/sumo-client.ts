@@ -46,23 +46,10 @@ export class SumoClient {
     this.configManager = configManager;
   }
 
-  private getActiveAccount(): { name: string; account: AccountConfig } {
-    const active = this.configManager.getActiveAccount();
-    if (!active) {
-      throw new Error(
-        "No active account configured. Use sumo_add_account to add one."
-      );
-    }
-    return active;
-  }
-
-  private getAccountByName(accountName?: string): { name: string; account: AccountConfig } {
-    if (accountName) {
-      const account = this.configManager.getAccount(accountName);
-      if (!account) throw new Error(`Account "${accountName}" not found`);
-      return { name: accountName, account };
-    }
-    return this.getActiveAccount();
+  private getAccountByName(accountName: string): { name: string; account: AccountConfig } {
+    const account = this.configManager.getAccount(accountName);
+    if (!account) throw new Error(`Account "${accountName}" not found`);
+    return { name: accountName, account };
   }
 
   private getRateLimiter(accountName: string): RateLimiter {
@@ -92,6 +79,7 @@ export class SumoClient {
     queryParams?: Record<string, string | number | boolean | undefined>,
     accountName?: string
   ): Promise<T> {
+    if (!accountName) throw new Error("Account name is required");
     const { name, account } = this.getAccountByName(accountName);
     const baseUrl = getBaseUrl(account.deployment);
 

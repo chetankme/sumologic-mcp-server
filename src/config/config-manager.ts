@@ -9,7 +9,6 @@ const CONFIG_FILE = join(CONFIG_DIR, "mcp-config.json");
 
 function defaultConfig(): McpConfig {
   return {
-    activeAccount: null,
     accounts: {},
   };
 }
@@ -31,14 +30,6 @@ export class ConfigManager {
     await writeFile(CONFIG_FILE, JSON.stringify(this.config, null, 2), "utf-8");
   }
 
-  getActiveAccount(): { name: string; account: AccountConfig } | null {
-    const name = this.config.activeAccount;
-    if (!name || !this.config.accounts[name]) {
-      return null;
-    }
-    return { name, account: this.config.accounts[name] };
-  }
-
   getAccount(name: string): AccountConfig | null {
     return this.config.accounts[name] ?? null;
   }
@@ -47,13 +38,11 @@ export class ConfigManager {
     name: string;
     deployment: DeploymentRegion;
     accessId: string;
-    isActive: boolean;
   }> {
     return Object.entries(this.config.accounts).map(([name, acct]) => ({
       name,
       deployment: acct.deployment,
       accessId: acct.accessId,
-      isActive: name === this.config.activeAccount,
     }));
   }
 
@@ -75,11 +64,6 @@ export class ConfigManager {
       accessKey,
     };
 
-    // Auto-activate if this is the first account
-    if (!this.config.activeAccount) {
-      this.config.activeAccount = name;
-    }
-
     await this.save();
   }
 
@@ -89,23 +73,6 @@ export class ConfigManager {
     }
 
     delete this.config.accounts[name];
-
-    if (this.config.activeAccount === name) {
-      const remaining = Object.keys(this.config.accounts);
-      this.config.activeAccount = remaining.length > 0 ? remaining[0] : null;
-    }
-
-    await this.save();
-  }
-
-  async switchAccount(name: string): Promise<void> {
-    if (!this.config.accounts[name]) {
-      throw new Error(
-        `Account "${name}" not found. Available: ${Object.keys(this.config.accounts).join(", ")}`
-      );
-    }
-
-    this.config.activeAccount = name;
     await this.save();
   }
 }

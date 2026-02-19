@@ -18,6 +18,5 @@ export interface AccountConfig {
 }
 
 export interface McpConfig {
-  activeAccount: string | null;
   accounts: Record<string, AccountConfig>;
 }

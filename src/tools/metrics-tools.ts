@@ -291,6 +291,7 @@ export function registerMetricsTools(
     "sumo_run_metrics_query",
     "Execute a Sumo Logic metrics query and return results",
     {
+      account: z.string().describe("Name of the Sumo Logic account to use"),
       queries: z
         .array(metricsQueryRowSchema)
         .describe("Array of metrics query rows"),
@@ -307,7 +308,7 @@ export function registerMetricsTools(
       desiredQuantizationInSecs: z.number().optional()
         .describe("Desired quantization in seconds (default: 60)"),
     },
-    async ({ queries, startTime, endTime, requestedDataPoints, maxDataPoints, maxTotalDataPoints, desiredQuantizationInSecs }) => {
+    async ({ account, queries, startTime, endTime, requestedDataPoints, maxDataPoints, maxTotalDataPoints, desiredQuantizationInSecs }) => {
       try {
         const body: Record<string, unknown> = {
           query: queries,
@@ -321,7 +322,8 @@ export function registerMetricsTools(
 
         const resp = await client.post<MetricsQueryResponse>(
           "/v1/metrics/results",
-          body
+          body,
+          account
         );
 
         return {
@@ -375,7 +377,7 @@ export function registerMetricsTools(
             content: [
               {
                 type: "text" as const,
-                text: "No accounts configured. Use sumo_add_account to add one.",
+                text: "No accounts configured.",
               },
             ],
             isError: true,
