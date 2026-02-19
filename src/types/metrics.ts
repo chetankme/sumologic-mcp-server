@@ -1,17 +1,19 @@
 export interface MetricsQueryResponse {
-  queryResult: Array<{
+  response: Array<{
     rowId: string;
     results: Array<{
-      rowId: string;
-      dimensions: Record<string, string>;
-      datapoints: Array<{
-        timestamp: number;
-        value: number;
-      }>;
+      metric: {
+        dimensions: Array<{ key: string; value: string }>;
+        [key: string]: unknown;
+      };
+      datapoints: {
+        timestamp: number[];
+        value: number[];
+      };
+      horAggs?: unknown;
     }>;
   }>;
-  errors?: Array<{
-    rowId: string;
-    errors: Array<{ code: string; message: string }>;
-  }>;
+  queryInfo?: unknown;
+  error?: string;
+  errorMessage?: string;
 }
