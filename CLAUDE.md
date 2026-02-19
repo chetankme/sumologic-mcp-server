@@ -23,20 +23,19 @@ src/
     config-manager.ts         # Reads/writes ~/.sumologic/mcp-config.json
     deployments.ts            # Maps deployment regions (US1, US2, EU, etc.) to API base URLs
   tools/
-    config-tools.ts           # Account management tools (add/remove/switch/list)
-    search-job-tools.ts       # Search job tools (sumo_search, create/status/messages/records)
-    log-search-tools.ts       # Saved log search CRUD tools
-    metrics-tools.ts          # Metrics query + saved metrics search tools
+    config-tools.ts           # Account configuration tools (configure, list)
+    search-job-tools.ts       # Search job tools (sumo_search, sumo_search_all, create/status/messages/records)
+    metrics-tools.ts          # Metrics query tools (sumo_run_metrics_query, sumo_run_metrics_query_all)
   types/
     config.ts                 # DeploymentRegion, AccountConfig, McpConfig
-    search.ts                 # Search job types, saved log search types, time range types
-    metrics.ts                # Metrics query/response types, saved metrics search types
+    search.ts                 # Search job types (CreateSearchJobResponse, SearchJobStatus, etc.)
+    metrics.ts                # Metrics query/response types
 ```
 
 ### Architecture (4 layers)
 
 1. **Entry** (`index.ts`) — Creates `McpServer`, initializes `ConfigManager` and `SumoClient`, registers tool groups, connects `StdioServerTransport`.
-2. **Config** (`config/`) — Manages multi-account configuration persisted to `~/.sumologic/mcp-config.json`. Supports 10 deployment regions (AU, CA, DE, EU, FED, IN, JP, KR, US1, US2).
+2. **Config** (`config/`) — Manages multi-account configuration persisted to `~/.sumologic/mcp-config.json`. Supports 11 deployment regions (AU, CA, DE, EU, FED, IN, JP, KR, LONG, US1, US2).
 3. **Client** (`client/sumo-client.ts`) — Stateless HTTP client using `fetch`. Handles Basic auth, token-bucket rate limiting, exponential backoff retries (max 3), and 429/5xx handling.
 4. **Tools** (`tools/`) — Each file exports a `register*Tools(server, client|configManager)` function that calls `server.tool()` to register MCP tools with Zod input schemas.
 
@@ -53,7 +52,6 @@ Account credentials are stored at `~/.sumologic/mcp-config.json`:
 
 ```json
 {
-  "activeAccount": "account-name",
   "accounts": {
     "account-name": {
       "deployment": "US1",
@@ -64,7 +62,7 @@ Account credentials are stored at `~/.sumologic/mcp-config.json`:
 }
 ```
 
-The first account added is auto-activated. The config directory is auto-created on first write.
+The config directory is auto-created on first write. Use `configure_sumo_accounts` to open the config file in your system editor.
 
 ## Environment Variables
 
@@ -105,6 +103,4 @@ SUMO_ENABLE_LOW_LEVEL_TOOLS=true npm start
 ## Sumo Logic API Endpoints Used
 
 - `/v1/search/jobs` — Create, poll, fetch messages/records, delete search jobs
-- `/v1/logSearches` — CRUD for saved log searches
 - `/v1/metrics/results` — Execute metrics queries
-- `/v1/metricsSearches` — CRUD for saved metrics searches
