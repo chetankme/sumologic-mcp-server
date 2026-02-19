@@ -67,12 +67,4 @@ export class ConfigManager {
     await this.save();
   }
 
-  async removeAccount(name: string): Promise<void> {
-    if (!this.config.accounts[name]) {
-      throw new Error(`Account "${name}" not found`);
-    }
-
-    delete this.config.accounts[name];
-    await this.save();
-  }
 }
