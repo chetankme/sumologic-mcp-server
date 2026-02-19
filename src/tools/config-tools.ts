@@ -49,7 +49,7 @@ export function registerConfigTools(
 
   server.tool(
     "sumo_list_accounts",
-    "List all configured Sumo Logic accounts (access keys are masked)",
+    "List all configured Sumo Logic accounts",
     {},
     async () => {
       const accounts = configManager.listAccounts();
@@ -64,10 +64,7 @@ export function registerConfigTools(
         };
       }
 
-      const lines = accounts.map((a) => {
-        const maskedId = a.accessId.slice(0, 4) + "****";
-        return `- ${a.name}: deployment=${a.deployment}, accessId=${maskedId}`;
-      });
+      const lines = accounts.map((a) => `- ${a.name}`);
 
       return {
         content: [
