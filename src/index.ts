@@ -21,8 +21,8 @@ async function main(): Promise<void> {
 
   // Register all tools
   registerConfigTools(server, configManager);
-  registerSearchJobTools(server, client);
-  registerMetricsTools(server, client);
+  registerSearchJobTools(server, client, configManager);
+  registerMetricsTools(server, client, configManager);
 
   // Connect via stdio
   const transport = new StdioServerTransport();

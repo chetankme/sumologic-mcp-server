@@ -1,11 +1,3 @@
-export interface CreateSearchJobRequest {
-  query: string;
-  from: string;
-  to: string;
-  timeZone?: string;
-  byReceiptTime?: boolean;
-}
-
 export interface CreateSearchJobResponse {
   id: string;
   link: {
@@ -14,15 +6,13 @@ export interface CreateSearchJobResponse {
   };
 }
 
-export type SearchJobState =
-  | "NOT STARTED"
-  | "GATHERING RESULTS"
-  | "FORCE PAUSED"
-  | "DONE GATHERING RESULTS"
-  | "CANCELLED";
-
 export interface SearchJobStatus {
-  state: SearchJobState;
+  state:
+    | "NOT STARTED"
+    | "GATHERING RESULTS"
+    | "FORCE PAUSED"
+    | "DONE GATHERING RESULTS"
+    | "CANCELLED";
   messageCount: number;
   histogramBuckets?: Array<{
     length: number;
@@ -34,59 +24,12 @@ export interface SearchJobStatus {
   recordCount: number;
 }
 
-export interface SearchMessageMap {
-  [key: string]: string;
-}
-
-export interface SearchMessage {
-  map: SearchMessageMap;
-}
-
 export interface SearchMessagesResponse {
   fields: Array<{ name: string; fieldType: string; keyField: boolean }>;
-  messages: SearchMessage[];
-}
-
-export interface SearchRecord {
-  map: Record<string, string>;
+  messages: Array<{ map: { [key: string]: string } }>;
 }
 
 export interface SearchRecordsResponse {
   fields: Array<{ name: string; fieldType: string; keyField: boolean }>;
-  records: SearchRecord[];
+  records: Array<{ map: Record<string, string> }>;
 }
-
-export interface TimeRangeRelative {
-  type: "BeginBoundedTimeRange";
-  from: {
-    type: "RelativeTimeRangeBoundary";
-    relativeTime: string; // e.g. "-15m", "-1h"
-  };
-  to?: {
-    type: "RelativeTimeRangeBoundary";
-    relativeTime: string;
-  };
-}
-
-export interface TimeRangeAbsolute {
-  type: "BeginBoundedTimeRange";
-  from: {
-    type: "EpochTimeRangeBoundary";
-    epochMillis: number;
-  };
-  to?: {
-    type: "EpochTimeRangeBoundary";
-    epochMillis: number;
-  };
-}
-
-export interface TimeRangeLiteral {
-  type: "BeginBoundedTimeRange";
-  from: {
-    type: "LiteralTimeRangeBoundary";
-    rangeName: string; // "today", "yesterday", "this_week", etc.
-  };
-}
-
-export type TimeRange = TimeRangeRelative | TimeRangeAbsolute | TimeRangeLiteral;
-

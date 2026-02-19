@@ -1,11 +1,8 @@
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { SumoClient } from "../client/sumo-client.js";
-import {
-  MetricsQueryResponse,
-  SavedMetricsSearch,
-  SavedMetricsSearchListResponse,
-} from "../types/metrics.js";
+import { ConfigManager } from "../config/config-manager.js";
+import { MetricsQueryResponse } from "../types/metrics.js";
 
 const metricsQueryRowSchema = z.object({
   rowId: z.string().describe("Unique identifier for this query row (e.g. 'A', 'B')"),
@@ -88,21 +85,10 @@ function formatMetricsResponse(resp: MetricsQueryResponse): string {
   return parts.join("\n") || "No results.";
 }
 
-function formatSavedMetricsSearch(s: SavedMetricsSearch): string {
-  const queries = s.metricsQueries
-    .map((q) => `  ${q.rowId}: ${q.query}`)
-    .join("\n");
-  return [
-    `ID: ${s.id ?? "N/A"}`,
-    `Title: ${s.title}`,
-    `Description: ${s.description}`,
-    `Queries:\n${queries}`,
-  ].join("\n");
-}
-
 export function registerMetricsTools(
   server: McpServer,
-  client: SumoClient
+  client: SumoClient,
+  configManager: ConfigManager
 ): void {
   server.tool(
     "sumo_run_metrics_query",
@@ -142,149 +128,69 @@ export function registerMetricsTools(
     }
   );
 
+  // Multi-account: metrics query across all accounts in parallel
   server.tool(
-    "sumo_list_metrics_searches",
-    "List saved metrics searches",
+    "sumo_run_metrics_query_all",
+    "Execute a Sumo Logic metrics query across ALL configured accounts in parallel and return aggregated results",
     {
-      limit: z
-        .number()
-        .optional()
-        .describe("Max number of results (default: 100)"),
-      token: z
-        .string()
-        .optional()
-        .describe("Pagination token from previous response"),
+      queries: z
+        .array(metricsQueryRowSchema)
+        .describe("Array of metrics query rows"),
+      timeRange: metricsTimeRangeSchema.describe("Time range for the query"),
     },
-    async ({ limit, token }) => {
+    async ({ queries, timeRange }) => {
       try {
-        const params: Record<string, string | number | boolean | undefined> = {
-          limit: limit ?? 100,
-        };
-        if (token) params.token = token;
-
-        const resp = await client.get<SavedMetricsSearchListResponse>(
-          "/v1/metricsSearches",
-          params
-        );
-
-        if (
-          !resp.metricsSearches ||
-          resp.metricsSearches.length === 0
-        ) {
+        const accountNames = client.getAllAccountNames();
+        if (accountNames.length === 0) {
           return {
             content: [
               {
                 type: "text" as const,
-                text: "No saved metrics searches found.",
+                text: "No accounts configured. Use sumo_add_account to add one.",
               },
             ],
+            isError: true,
           };
         }
 
-        const items = resp.metricsSearches
-          .map(formatSavedMetricsSearch)
-          .join("\n\n---\n\n");
-        const nextToken = resp.token ? `\nNext page token: ${resp.token}` : "";
-
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `${resp.metricsSearches.length} saved metrics searches:\n\n${items}${nextToken}`,
-            },
-          ],
-        };
-      } catch (err) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error: ${err instanceof Error ? err.message : String(err)}`,
-            },
-          ],
-          isError: true,
-        };
-      }
-    }
-  );
-
-  server.tool(
-    "sumo_get_metrics_search",
-    "Get a saved metrics search by ID",
-    {
-      id: z.string().describe("Saved metrics search ID"),
-    },
-    async ({ id }) => {
-      try {
-        const result = await client.get<SavedMetricsSearch>(
-          `/v1/metricsSearches/${id}`
+        const accounts = configManager.listAccounts();
+        const accountDeployments = new Map(
+          accounts.map(a => [a.name, a.deployment])
         );
 
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: formatSavedMetricsSearch(result),
-            },
-          ],
-        };
-      } catch (err) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error: ${err instanceof Error ? err.message : String(err)}`,
-            },
-          ],
-          isError: true,
-        };
-      }
-    }
-  );
+        const results = await Promise.allSettled(
+          accountNames.map(name =>
+            client.post<MetricsQueryResponse>(
+              "/v1/metrics/results",
+              { queries, timeRange },
+              name
+            )
+          )
+        );
 
-  server.tool(
-    "sumo_save_metrics_search",
-    "Create a new saved metrics search",
-    {
-      title: z.string().describe("Title for the saved search"),
-      description: z.string().describe("Description"),
-      metricsQueries: z
-        .array(metricsQueryRowSchema)
-        .describe("Metrics query rows"),
-      timeRange: metricsTimeRangeSchema.describe("Time range configuration"),
-      desiredQuantizationInSecs: z
-        .number()
-        .optional()
-        .describe("Desired quantization in seconds"),
-    },
-    async ({
-      title,
-      description,
-      metricsQueries,
-      timeRange,
-      desiredQuantizationInSecs,
-    }) => {
-      try {
-        const body: Record<string, unknown> = {
-          title,
-          description,
-          metricsQueries,
-          timeRange,
-        };
-        if (desiredQuantizationInSecs !== undefined) {
-          body.desiredQuantizationInSecs = desiredQuantizationInSecs;
+        const sections: string[] = [];
+        for (let i = 0; i < accountNames.length; i++) {
+          const name = accountNames[i];
+          const deployment = accountDeployments.get(name) ?? "unknown";
+          const result = results[i];
+
+          if (result.status === "fulfilled") {
+            sections.push(
+              `=== Account: ${name} (${deployment}) ===\n${formatMetricsResponse(result.value)}`
+            );
+          } else {
+            const errMsg = result.reason instanceof Error
+              ? result.reason.message
+              : String(result.reason);
+            sections.push(`=== Account: ${name} (${deployment}) ===\nError: ${errMsg}`);
+          }
         }
 
-        const result = await client.post<SavedMetricsSearch>(
-          "/v1/metricsSearches",
-          body
-        );
-
         return {
           content: [
             {
               type: "text" as const,
-              text: `Saved metrics search created:\n${formatSavedMetricsSearch(result)}`,
+              text: sections.join("\n\n"),
             },
           ],
         };
@@ -293,7 +199,7 @@ export function registerMetricsTools(
           content: [
             {
               type: "text" as const,
-              text: `Error: ${err instanceof Error ? err.message : String(err)}`,
+              text: `Metrics query all error: ${err instanceof Error ? err.message : String(err)}`,
             },
           ],
           isError: true,

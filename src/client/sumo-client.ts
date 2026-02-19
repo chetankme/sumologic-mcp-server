@@ -39,12 +39,11 @@ async function acquireToken(limiter: RateLimiter): Promise<void> {
 
 export class SumoClient {
   private configManager: ConfigManager;
-  private rateLimiter: RateLimiter;
+  private rateLimiters = new Map<string, RateLimiter>();
   private maxRetries = 3;
 
   constructor(configManager: ConfigManager) {
     this.configManager = configManager;
-    this.rateLimiter = createRateLimiter(4); // 4 requests/sec
   }
 
   private getActiveAccount(): { name: string; account: AccountConfig } {
@@ -55,6 +54,28 @@ export class SumoClient {
       );
     }
     return active;
+  }
+
+  private getAccountByName(accountName?: string): { name: string; account: AccountConfig } {
+    if (accountName) {
+      const account = this.configManager.getAccount(accountName);
+      if (!account) throw new Error(`Account "${accountName}" not found`);
+      return { name: accountName, account };
+    }
+    return this.getActiveAccount();
+  }
+
+  private getRateLimiter(accountName: string): RateLimiter {
+    let limiter = this.rateLimiters.get(accountName);
+    if (!limiter) {
+      limiter = createRateLimiter(4); // 4 requests/sec per account
+      this.rateLimiters.set(accountName, limiter);
+    }
+    return limiter;
+  }
+
+  getAllAccountNames(): string[] {
+    return this.configManager.listAccounts().map(a => a.name);
   }
 
   private buildAuthHeader(account: AccountConfig): string {
@@ -68,9 +89,10 @@ export class SumoClient {
     method: string,
     path: string,
     body?: unknown,
-    queryParams?: Record<string, string | number | boolean | undefined>
+    queryParams?: Record<string, string | number | boolean | undefined>,
+    accountName?: string
   ): Promise<T> {
-    const { account } = this.getActiveAccount();
+    const { name, account } = this.getAccountByName(accountName);
     const baseUrl = getBaseUrl(account.deployment);
 
     let url = `${baseUrl}${path}`;
@@ -97,7 +119,7 @@ export class SumoClient {
     let lastError: Error | null = null;
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
-      await acquireToken(this.rateLimiter);
+      await acquireToken(this.getRateLimiter(name));
 
       try {
         const response = await fetch(url, {
@@ -162,20 +184,17 @@ export class SumoClient {
 
   async get<T>(
     path: string,
-    queryParams?: Record<string, string | number | boolean | undefined>
+    queryParams?: Record<string, string | number | boolean | undefined>,
+    accountName?: string
   ): Promise<T> {
-    return this.request<T>("GET", path, undefined, queryParams);
+    return this.request<T>("GET", path, undefined, queryParams, accountName);
   }
 
-  async post<T>(path: string, body?: unknown): Promise<T> {
-    return this.request<T>("POST", path, body);
+  async post<T>(path: string, body?: unknown, accountName?: string): Promise<T> {
+    return this.request<T>("POST", path, body, undefined, accountName);
   }
 
-  async put<T>(path: string, body: unknown): Promise<T> {
-    return this.request<T>("PUT", path, body);
-  }
-
-  async delete<T>(path: string): Promise<T> {
-    return this.request<T>("DELETE", path);
+  async delete<T>(path: string, accountName?: string): Promise<T> {
+    return this.request<T>("DELETE", path, undefined, undefined, accountName);
   }
 }

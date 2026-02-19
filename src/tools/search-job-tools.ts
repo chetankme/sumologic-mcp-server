@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { SumoClient } from "../client/sumo-client.js";
+import { ConfigManager } from "../config/config-manager.js";
 import {
   CreateSearchJobResponse,
   SearchJobStatus,
@@ -11,15 +12,31 @@ import {
 const POLL_TIMEOUT_MS = 120_000;
 const POLL_INTERVAL_MS = 2_000;
 
+const AGGREGATION_PATTERN =
+  /\|\s*(?:count|sum|avg|min|max|first|last|total|pct|values|stddev|fillmissing|timeslice|count_frequent|top|topk|bottomk|transpose|outlier|predict|compare)\b/i;
+
+function hasAggregation(query: string): boolean {
+  return AGGREGATION_PATTERN.test(query);
+}
+
+function addLimitIfNeeded(query: string, limit: number): string {
+  if (hasAggregation(query)) return query;
+  if (/\|\s*limit\b/i.test(query)) return query;
+  return `${query.trimEnd()} | limit ${limit}`;
+}
+
 async function pollUntilDone(
   client: SumoClient,
-  jobId: string
+  jobId: string,
+  accountName?: string
 ): Promise<SearchJobStatus> {
   const start = Date.now();
 
   while (Date.now() - start < POLL_TIMEOUT_MS) {
     const status = await client.get<SearchJobStatus>(
-      `/v1/search/jobs/${jobId}`
+      `/v1/search/jobs/${jobId}`,
+      undefined,
+      accountName
     );
 
     if (status.state === "DONE GATHERING RESULTS") {
@@ -41,7 +58,7 @@ async function pollUntilDone(
 
   // Attempt cleanup on timeout
   try {
-    await client.delete(`/v1/search/jobs/${jobId}`);
+    await client.delete(`/v1/search/jobs/${jobId}`, accountName);
   } catch {
     // best-effort cleanup
   }
@@ -78,9 +95,73 @@ function formatRecords(resp: SearchRecordsResponse): string {
   return `${resp.records.length} records:\n${header}\n${"─".repeat(header.length)}\n${rows.join("\n")}`;
 }
 
+async function searchForAccount(
+  client: SumoClient,
+  accountName: string,
+  params: {
+    query: string;
+    from: string;
+    to: string;
+    timeZone: string;
+    limit: number;
+    byReceiptTime: boolean;
+  }
+): Promise<string> {
+  const finalQuery = addLimitIfNeeded(params.query, params.limit);
+  const job = await client.post<CreateSearchJobResponse>(
+    "/v1/search/jobs",
+    {
+      query: finalQuery,
+      from: params.from,
+      to: params.to,
+      timeZone: params.timeZone,
+      byReceiptTime: params.byReceiptTime,
+    },
+    accountName
+  );
+
+  const jobId = job.id;
+
+  try {
+    const status = await pollUntilDone(client, jobId, accountName);
+
+    let resultText: string;
+    if (status.recordCount > 0) {
+      const records = await client.get<SearchRecordsResponse>(
+        `/v1/search/jobs/${jobId}/records`,
+        { offset: 0, limit: params.limit },
+        accountName
+      );
+      resultText = formatRecords(records);
+    } else {
+      const messages = await client.get<SearchMessagesResponse>(
+        `/v1/search/jobs/${jobId}/messages`,
+        { offset: 0, limit: params.limit },
+        accountName
+      );
+      resultText = formatMessages(messages);
+    }
+
+    const warnings = status.pendingWarnings;
+    const warningText =
+      warnings && warnings.length > 0
+        ? `\nWarnings:\n${warnings.join("\n")}`
+        : "";
+
+    return `Search completed (${status.messageCount} total messages, ${status.recordCount} total records).\n\n${resultText}${warningText}`;
+  } finally {
+    try {
+      await client.delete(`/v1/search/jobs/${jobId}`, accountName);
+    } catch {
+      // best-effort cleanup
+    }
+  }
+}
+
 export function registerSearchJobTools(
   server: McpServer,
-  client: SumoClient
+  client: SumoClient,
+  configManager: ConfigManager
 ): void {
   // High-level search: create, poll, fetch, cleanup
   server.tool(
@@ -114,12 +195,13 @@ export function registerSearchJobTools(
     async ({ query, from, to, timeZone, limit, byReceiptTime }) => {
       try {
         const resultLimit = Math.min(limit ?? 100, 10000);
+        const finalQuery = addLimitIfNeeded(query, resultLimit);
 
         // 1. Create job
         const job = await client.post<CreateSearchJobResponse>(
           "/v1/search/jobs",
           {
-            query,
+            query: finalQuery,
             from,
             to,
             timeZone: timeZone ?? "UTC",
@@ -353,6 +435,107 @@ export function registerSearchJobTools(
             {
               type: "text" as const,
               text: `Error: ${err instanceof Error ? err.message : String(err)}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // Multi-account: search all accounts in parallel
+  server.tool(
+    "sumo_search_all",
+    "Run a Sumo Logic search query across ALL configured accounts in parallel and return aggregated results",
+    {
+      query: z.string().describe("Sumo Logic query string"),
+      from: z
+        .string()
+        .describe(
+          "Start time (ISO 8601 format, e.g. '2024-01-01T00:00:00Z' or relative like '2024-01-01T00:00:00-05:00')"
+        ),
+      to: z
+        .string()
+        .describe(
+          "End time (ISO 8601 format, e.g. '2024-01-01T01:00:00Z' or relative)"
+        ),
+      timeZone: z
+        .string()
+        .optional()
+        .describe("Time zone (default: UTC), e.g. 'America/Los_Angeles'"),
+      limit: z
+        .number()
+        .optional()
+        .describe("Max number of results per account (default: 100, max: 10000)"),
+      byReceiptTime: z
+        .boolean()
+        .optional()
+        .describe("Use receipt time instead of message time (default: false)"),
+    },
+    async ({ query, from, to, timeZone, limit, byReceiptTime }) => {
+      try {
+        const accountNames = client.getAllAccountNames();
+        if (accountNames.length === 0) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: "No accounts configured. Use sumo_add_account to add one.",
+              },
+            ],
+            isError: true,
+          };
+        }
+
+        const resultLimit = Math.min(limit ?? 100, 10000);
+        const searchParams = {
+          query,
+          from,
+          to,
+          timeZone: timeZone ?? "UTC",
+          limit: resultLimit,
+          byReceiptTime: byReceiptTime ?? false,
+        };
+
+        const accounts = configManager.listAccounts();
+        const accountDeployments = new Map(
+          accounts.map(a => [a.name, a.deployment])
+        );
+
+        const results = await Promise.allSettled(
+          accountNames.map(name => searchForAccount(client, name, searchParams))
+        );
+
+        const sections: string[] = [];
+        for (let i = 0; i < accountNames.length; i++) {
+          const name = accountNames[i];
+          const deployment = accountDeployments.get(name) ?? "unknown";
+          const result = results[i];
+
+          if (result.status === "fulfilled") {
+            sections.push(`=== Account: ${name} (${deployment}) ===\n${result.value}`);
+          } else {
+            const errMsg = result.reason instanceof Error
+              ? result.reason.message
+              : String(result.reason);
+            sections.push(`=== Account: ${name} (${deployment}) ===\nError: ${errMsg}`);
+          }
+        }
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: sections.join("\n\n"),
+            },
+          ],
+        };
+      } catch (err) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Search all error: ${err instanceof Error ? err.message : String(err)}`,
             },
           ],
           isError: true,
