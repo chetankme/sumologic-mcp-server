@@ -87,12 +87,19 @@ function formatRecords(resp: SearchRecordsResponse): string {
   }
 
   const fieldNames = resp.fields.map((f) => f.name);
+  const hasTimeslice = resp.fields.some((f) => f.name === "_timeslice");
+  const records = hasTimeslice
+    ? [...resp.records].sort(
+        (a, b) =>
+          Number(a.map["_timeslice"] ?? 0) - Number(b.map["_timeslice"] ?? 0)
+      )
+    : resp.records;
   const header = fieldNames.join(" | ");
-  const rows = resp.records.map((rec) =>
+  const rows = records.map((rec) =>
     fieldNames.map((f) => rec.map[f] ?? "").join(" | ")
   );
 
-  return `${resp.records.length} records:\n${header}\n${"─".repeat(header.length)}\n${rows.join("\n")}`;
+  return `${records.length} records:\n${header}\n${"─".repeat(header.length)}\n${rows.join("\n")}`;
 }
 
 async function searchForAccount(
