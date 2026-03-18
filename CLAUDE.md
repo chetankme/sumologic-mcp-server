@@ -12,6 +12,8 @@ npm start         # Run compiled output (node dist/index.js)
 
 No test framework is configured. The project uses TypeScript 5.9+ targeting ES2022 with Node16 module resolution.
 
+**Always run `npm run build` after any code changes.**
+
 ## Project Structure
 
 ```
