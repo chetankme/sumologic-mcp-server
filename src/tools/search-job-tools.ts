@@ -13,6 +13,7 @@ import {
  *  an already-absolute ISO 8601 string to an ISO 8601 string.
  *  Relative strings are resolved against Date.now(). */
 function resolveTimeToISO(time: string): string {
+  if (time === 'now') return new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
   const match = time.match(/^-(\d+)([smhd])$/);
   if (!match) return time; // already absolute, pass through
   const value = parseInt(match[1], 10);
