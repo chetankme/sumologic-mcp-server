@@ -18,7 +18,7 @@ function resolveTimeToISO(time: string): string {
   const value = parseInt(match[1], 10);
   const unit = match[2];
   const multipliers: Record<string, number> = { s: 1000, m: 60000, h: 3600000, d: 86400000 };
-  return new Date(Date.now() - value * multipliers[unit]).toISOString();
+  return new Date(Date.now() - value * multipliers[unit]).toISOString().replace(/\.\d{3}Z$/, 'Z');
 }
 
 const POLL_TIMEOUT_MS = 120_000;
