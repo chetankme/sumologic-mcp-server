@@ -9,6 +9,18 @@ import {
   SearchRecordsResponse,
 } from "../types/search.js";
 
+/** Convert a relative time string (e.g. "-15m", "-1h", "-3h", "-1d") or
+ *  an already-absolute ISO 8601 string to an ISO 8601 string.
+ *  Relative strings are resolved against Date.now(). */
+function resolveTimeToISO(time: string): string {
+  const match = time.match(/^-(\d+)([smhd])$/);
+  if (!match) return time; // already absolute, pass through
+  const value = parseInt(match[1], 10);
+  const unit = match[2];
+  const multipliers: Record<string, number> = { s: 1000, m: 60000, h: 3600000, d: 86400000 };
+  return new Date(Date.now() - value * multipliers[unit]).toISOString();
+}
+
 const POLL_TIMEOUT_MS = 120_000;
 const POLL_INTERVAL_MS = 2_000;
 
@@ -181,12 +193,12 @@ export function registerSearchJobTools(
       from: z
         .string()
         .describe(
-          "Start time (ISO 8601 format, e.g. '2024-01-01T00:00:00Z' or relative like '2024-01-01T00:00:00-05:00')"
+          "Start time — ISO 8601 (e.g. '2024-01-01T00:00:00Z') or relative (e.g. '-15m', '-1h', '-1d')"
         ),
       to: z
         .string()
         .describe(
-          "End time (ISO 8601 format, e.g. '2024-01-01T01:00:00Z' or relative)"
+          "End time — ISO 8601 (e.g. '2024-01-01T01:00:00Z') or relative (e.g. '-0m')"
         ),
       timeZone: z
         .string()
@@ -211,8 +223,8 @@ export function registerSearchJobTools(
           "/v1/search/jobs",
           {
             query: finalQuery,
-            from,
-            to,
+            from: resolveTimeToISO(from),
+            to: resolveTimeToISO(to),
             timeZone: timeZone ?? "UTC",
             byReceiptTime: byReceiptTime ?? false,
           },
@@ -289,8 +301,8 @@ export function registerSearchJobTools(
     {
       account: z.string().describe("Name of the Sumo Logic account to use"),
       query: z.string().describe("Sumo Logic query string"),
-      from: z.string().describe("Start time (ISO 8601)"),
-      to: z.string().describe("End time (ISO 8601)"),
+      from: z.string().describe("Start time — ISO 8601 (e.g. '2024-01-01T00:00:00Z') or relative (e.g. '-15m', '-1h', '-1d')"),
+      to: z.string().describe("End time — ISO 8601 (e.g. '2024-01-01T01:00:00Z') or relative (e.g. '-0m')"),
       timeZone: z.string().optional().describe("Time zone (default: UTC)"),
       byReceiptTime: z
         .boolean()
@@ -303,8 +315,8 @@ export function registerSearchJobTools(
           "/v1/search/jobs",
           {
             query,
-            from,
-            to,
+            from: resolveTimeToISO(from),
+            to: resolveTimeToISO(to),
             timeZone: timeZone ?? "UTC",
             byReceiptTime: byReceiptTime ?? false,
           },
@@ -476,12 +488,12 @@ export function registerSearchJobTools(
       from: z
         .string()
         .describe(
-          "Start time (ISO 8601 format, e.g. '2024-01-01T00:00:00Z' or relative like '2024-01-01T00:00:00-05:00')"
+          "Start time — ISO 8601 (e.g. '2024-01-01T00:00:00Z') or relative (e.g. '-15m', '-1h', '-1d')"
         ),
       to: z
         .string()
         .describe(
-          "End time (ISO 8601 format, e.g. '2024-01-01T01:00:00Z' or relative)"
+          "End time — ISO 8601 (e.g. '2024-01-01T01:00:00Z') or relative (e.g. '-0m')"
         ),
       timeZone: z
         .string()
@@ -514,8 +526,8 @@ export function registerSearchJobTools(
         const resultLimit = Math.min(limit ?? 100, 10000);
         const searchParams = {
           query,
-          from,
-          to,
+          from: resolveTimeToISO(from),
+          to: resolveTimeToISO(to),
           timeZone: timeZone ?? "UTC",
           limit: resultLimit,
           byReceiptTime: byReceiptTime ?? false,
