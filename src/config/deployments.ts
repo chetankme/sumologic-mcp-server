@@ -12,6 +12,7 @@ export const DEPLOYMENT_URLS: Record<DeploymentRegion, string> = {
   LONG: "https://long-api.sumologic.net/api",
   US1: "https://api.sumologic.com/api",
   US2: "https://api.us2.sumologic.com/api",
+  STAG: "https://stag-api.sumologic.net/api"
 };
 
 export function getBaseUrl(deployment: DeploymentRegion): string {
