@@ -72,14 +72,14 @@ The config directory is auto-created on first write. Use `configure_sumo_account
 |---|---|---|
 | `SUMO_ENABLE_LOW_LEVEL_TOOLS` | `false` | Set to `true` to expose the 4 low-level search job tools (`sumo_create_search_job`, `sumo_get_search_job_status`, `sumo_get_search_job_messages`, `sumo_get_search_job_records`). By default only the high-level `sumo_search` and `sumo_search_all` tools are registered. |
 
-Example — enable in an MCP client config:
+Example — enable in an MCP client config (i.e ~/.claude.json)
 
 ```json
 {
   "mcpServers": {
     "sumologic": {
       "command": "node",
-      "args": ["dist/index.js"],
+      "args": ["${absolute_path}/mcp_server/dist/index.js"],
       "env": {
         "SUMO_ENABLE_LOW_LEVEL_TOOLS": "true"
       }
