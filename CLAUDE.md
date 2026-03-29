@@ -28,10 +28,12 @@ src/
     config-tools.ts           # Account configuration tools (configure, list)
     search-job-tools.ts       # Search job tools (sumo_search, sumo_search_all, create/status/messages/records)
     metrics-tools.ts          # Metrics query tools (sumo_run_metrics_query, sumo_run_metrics_query_all)
+    dashboard-tools.ts        # Dashboard tools (sumo_get_dashboard, sumo_list_dashboards)
   types/
     config.ts                 # DeploymentRegion, AccountConfig, McpConfig
     search.ts                 # Search job types (CreateSearchJobResponse, SearchJobStatus, etc.)
     metrics.ts                # Metrics query/response types
+    dashboard.ts              # Dashboard types (Dashboard, PaginatedDashboards)
 ```
 
 ### Architecture (4 layers)
@@ -107,3 +109,4 @@ SUMO_ENABLE_LOW_LEVEL_TOOLS=true npm start
 
 - `/v1/search/jobs` — Create, poll, fetch messages/records, delete search jobs
 - `/v1/metrics/results` — Execute metrics queries
+- `/v2/dashboards` — List and retrieve dashboards
