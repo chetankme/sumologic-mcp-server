@@ -5,6 +5,7 @@ import { SumoClient } from "./client/sumo-client.js";
 import { registerConfigTools } from "./tools/config-tools.js";
 import { registerSearchJobTools } from "./tools/search-job-tools.js";
 import { registerMetricsTools } from "./tools/metrics-tools.js";
+import { registerDashboardTools } from "./tools/dashboard-tools.js";
 
 async function main(): Promise<void> {
   const server = new McpServer({
@@ -24,6 +25,7 @@ async function main(): Promise<void> {
   registerConfigTools(server, configManager);
   registerSearchJobTools(server, client, configManager, { enableLowLevelTools });
   registerMetricsTools(server, client, configManager);
+  registerDashboardTools(server, client, configManager);
 
   // Connect via stdio
   const transport = new StdioServerTransport();
