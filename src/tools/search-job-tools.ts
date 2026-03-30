@@ -1,4 +1,7 @@
 import { z } from "zod";
+import { writeFileSync } from "fs";
+import { join } from "path";
+import { tmpdir } from "os";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { SumoClient } from "../client/sumo-client.js";
 import { ConfigManager } from "../config/config-manager.js";
@@ -8,6 +11,8 @@ import {
   SearchMessagesResponse,
   SearchRecordsResponse,
 } from "../types/search.js";
+import { generateLineChartSvg, generateBarChartSvg } from "../charts/svg-chart.js";
+import { searchRecordsToChart } from "../charts/search-chart-adapter.js";
 
 /** Convert a relative time string (e.g. "-15m", "-1h", "-3h", "-1d") or
  *  an already-absolute ISO 8601 string to an ISO 8601 string.
@@ -94,6 +99,28 @@ function formatMessages(resp: SearchMessagesResponse): string {
   return `${resp.messages.length} messages:\n${lines.join("\n")}`;
 }
 
+function writeSvgToTempFile(svg: string, prefix: string): string {
+  const filename = `${prefix}-${Date.now()}.svg`;
+  const filepath = join(tmpdir(), filename);
+  writeFileSync(filepath, svg, "utf-8");
+  return filepath;
+}
+
+function renderSearchChart(resp: SearchRecordsResponse): string | null {
+  const chartResult = searchRecordsToChart(resp);
+  if (!chartResult) return null;
+
+  let svg: string | null = null;
+  if (chartResult.type === "line") {
+    svg = generateLineChartSvg(chartResult.data);
+  } else {
+    svg = generateBarChartSvg(chartResult.data);
+  }
+
+  if (!svg) return null;
+  return writeSvgToTempFile(svg, "sumo-search-chart");
+}
+
 function formatRecords(resp: SearchRecordsResponse): string {
   if (!resp.records || resp.records.length === 0) {
     return "No records found.";
@@ -115,6 +142,11 @@ function formatRecords(resp: SearchRecordsResponse): string {
   return `${records.length} records:\n${header}\n${"─".repeat(header.length)}\n${rows.join("\n")}`;
 }
 
+interface SearchAccountResult {
+  text: string;
+  records?: SearchRecordsResponse;
+}
+
 async function searchForAccount(
   client: SumoClient,
   accountName: string,
@@ -126,7 +158,7 @@ async function searchForAccount(
     limit: number;
     byReceiptTime: boolean;
   }
-): Promise<string> {
+): Promise<SearchAccountResult> {
   const finalQuery = addLimitIfNeeded(params.query, params.limit);
   const job = await client.post<CreateSearchJobResponse>(
     "/v1/search/jobs",
@@ -146,8 +178,9 @@ async function searchForAccount(
     const status = await pollUntilDone(client, jobId, accountName);
 
     let resultText: string;
+    let records: SearchRecordsResponse | undefined;
     if (status.recordCount > 0) {
-      const records = await client.get<SearchRecordsResponse>(
+      records = await client.get<SearchRecordsResponse>(
         `/v1/search/jobs/${jobId}/records`,
         { offset: 0, limit: params.limit },
         accountName
@@ -168,7 +201,10 @@ async function searchForAccount(
         ? `\nWarnings:\n${warnings.join("\n")}`
         : "";
 
-    return `Search completed (${status.messageCount} total messages, ${status.recordCount} total records).\n\n${resultText}${warningText}`;
+    return {
+      text: `Search completed (${status.messageCount} total messages, ${status.recordCount} total records).\n\n${resultText}${warningText}`,
+      records,
+    };
   } finally {
     try {
       await client.delete(`/v1/search/jobs/${jobId}`, accountName);
@@ -213,8 +249,12 @@ export function registerSearchJobTools(
         .boolean()
         .optional()
         .describe("Use receipt time instead of message time (default: false)"),
+      renderChart: z
+        .boolean()
+        .optional()
+        .describe("Generate SVG chart visualization for aggregate results (default: false)"),
     },
-    async ({ account, query, from, to, timeZone, limit, byReceiptTime }) => {
+    async ({ account, query, from, to, timeZone, limit, byReceiptTime, renderChart }) => {
       try {
         const resultLimit = Math.min(limit ?? 100, 10000);
         const finalQuery = addLimitIfNeeded(query, resultLimit);
@@ -240,6 +280,7 @@ export function registerSearchJobTools(
 
           // 3. Fetch results - records if aggregation, messages otherwise
           let resultText: string;
+          let chartPath: string | null = null;
 
           if (status.recordCount > 0) {
             const records = await client.get<SearchRecordsResponse>(
@@ -248,6 +289,9 @@ export function registerSearchJobTools(
               account
             );
             resultText = formatRecords(records);
+            if (renderChart) {
+              chartPath = renderSearchChart(records);
+            }
           } else {
             const messages = await client.get<SearchMessagesResponse>(
               `/v1/search/jobs/${jobId}/messages`,
@@ -264,13 +308,13 @@ export function registerSearchJobTools(
               ? `\n\nWarnings:\n${warnings.join("\n")}`
               : "";
 
+          let text = `Search completed (${status.messageCount} total messages, ${status.recordCount} total records).\n\n${resultText}${warningText}`;
+          if (chartPath) {
+            text += `\n\nChart saved to: ${chartPath}`;
+          }
+
           return {
-            content: [
-              {
-                type: "text" as const,
-                text: `Search completed (${status.messageCount} total messages, ${status.recordCount} total records).\n\n${resultText}${warningText}`,
-              },
-            ],
+            content: [{ type: "text" as const, text }],
           };
         } finally {
           // 4. Cleanup
@@ -508,8 +552,12 @@ export function registerSearchJobTools(
         .boolean()
         .optional()
         .describe("Use receipt time instead of message time (default: false)"),
+      renderChart: z
+        .boolean()
+        .optional()
+        .describe("Generate SVG chart visualization for aggregate results (default: false)"),
     },
-    async ({ query, from, to, timeZone, limit, byReceiptTime }) => {
+    async ({ query, from, to, timeZone, limit, byReceiptTime, renderChart }) => {
       try {
         const accountNames = client.getAllAccountNames();
         if (accountNames.length === 0) {
@@ -544,13 +592,20 @@ export function registerSearchJobTools(
         );
 
         const sections: string[] = [];
+        const chartPaths: string[] = [];
         for (let i = 0; i < accountNames.length; i++) {
           const name = accountNames[i];
           const deployment = accountDeployments.get(name) ?? "unknown";
           const result = results[i];
 
           if (result.status === "fulfilled") {
-            sections.push(`=== Account: ${name} (${deployment}) ===\n${result.value}`);
+            sections.push(`=== Account: ${name} (${deployment}) ===\n${result.value.text}`);
+            if (renderChart && result.value.records) {
+              const chartPath = renderSearchChart(result.value.records);
+              if (chartPath) {
+                chartPaths.push(`${name} (${deployment}): ${chartPath}`);
+              }
+            }
           } else {
             const errMsg = result.reason instanceof Error
               ? result.reason.message
@@ -559,13 +614,13 @@ export function registerSearchJobTools(
           }
         }
 
+        let text = sections.join("\n\n");
+        if (chartPaths.length > 0) {
+          text += `\n\nCharts saved to:\n${chartPaths.join("\n")}`;
+        }
+
         return {
-          content: [
-            {
-              type: "text" as const,
-              text: sections.join("\n\n"),
-            },
-          ],
+          content: [{ type: "text" as const, text }],
         };
       } catch (err) {
         return {

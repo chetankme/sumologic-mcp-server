@@ -29,11 +29,16 @@ src/
     search-job-tools.ts       # Search job tools (sumo_search, sumo_search_all, create/status/messages/records)
     metrics-tools.ts          # Metrics query tools (sumo_run_metrics_query, sumo_run_metrics_query_all)
     dashboard-tools.ts        # Dashboard tools (sumo_get_dashboard, sumo_list_dashboards)
+  charts/
+    svg-chart.ts              # Pure SVG chart generation (line charts, bar charts) — zero dependencies
+    metrics-chart-adapter.ts  # Transforms MetricsQueryResponse → ChartData for SVG rendering
+    search-chart-adapter.ts   # Transforms SearchRecordsResponse → ChartData (timeslice→line, categorical→bar)
   types/
     config.ts                 # DeploymentRegion, AccountConfig, McpConfig
     search.ts                 # Search job types (CreateSearchJobResponse, SearchJobStatus, etc.)
     metrics.ts                # Metrics query/response types
     dashboard.ts              # Dashboard types (Dashboard, PaginatedDashboards)
+    chart.ts                  # Chart types (ChartData, ChartSeries, BarChartData, BarChartItem)
 ```
 
 ### Architecture (4 layers)

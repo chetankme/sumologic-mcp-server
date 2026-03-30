@@ -1,8 +1,20 @@
 import { z } from "zod";
+import { writeFileSync } from "fs";
+import { join } from "path";
+import { tmpdir } from "os";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { SumoClient } from "../client/sumo-client.js";
 import { ConfigManager } from "../config/config-manager.js";
 import { MetricsQueryResponse } from "../types/metrics.js";
+import { generateLineChartSvg } from "../charts/svg-chart.js";
+import { metricsResponseToChartData } from "../charts/metrics-chart-adapter.js";
+
+function writeSvgToTempFile(svg: string, prefix: string): string {
+  const filename = `${prefix}-${Date.now()}.svg`;
+  const filepath = join(tmpdir(), filename);
+  writeFileSync(filepath, svg, "utf-8");
+  return filepath;
+}
 
 const metricsQueryRowSchema = z.object({
   rowId: z.string().describe("Unique identifier for this query row (e.g. 'A', 'B')"),
@@ -307,8 +319,10 @@ export function registerMetricsTools(
         .describe("Maximum total data points across all time series (default: 5000)"),
       desiredQuantizationInSecs: z.number().optional()
         .describe("Desired quantization in seconds (default: 60)"),
+      renderChart: z.boolean().optional()
+        .describe("Generate SVG line chart visualization (default: false)"),
     },
-    async ({ account, queries, startTime, endTime, requestedDataPoints, maxDataPoints, maxTotalDataPoints, desiredQuantizationInSecs }) => {
+    async ({ account, queries, startTime, endTime, requestedDataPoints, maxDataPoints, maxTotalDataPoints, desiredQuantizationInSecs, renderChart }) => {
       try {
         const body: Record<string, unknown> = {
           query: queries,
@@ -326,13 +340,26 @@ export function registerMetricsTools(
           account
         );
 
+        let text = formatMetricsResponse(resp);
+
+        if (renderChart && resp.response) {
+          const chartPaths: string[] = [];
+          for (const qr of resp.response) {
+            const chartData = metricsResponseToChartData(qr);
+            if (chartData) {
+              const svg = generateLineChartSvg(chartData);
+              if (svg) {
+                chartPaths.push(writeSvgToTempFile(svg, "sumo-metrics-chart"));
+              }
+            }
+          }
+          if (chartPaths.length > 0) {
+            text += `\n\nCharts saved to:\n${chartPaths.join("\n")}`;
+          }
+        }
+
         return {
-          content: [
-            {
-              type: "text" as const,
-              text: formatMetricsResponse(resp),
-            },
-          ],
+          content: [{ type: "text" as const, text }],
         };
       } catch (err) {
         return {
@@ -368,8 +395,10 @@ export function registerMetricsTools(
         .describe("Maximum total data points across all time series (default: 5000)"),
       desiredQuantizationInSecs: z.number().optional()
         .describe("Desired quantization in seconds (default: 60)"),
+      renderChart: z.boolean().optional()
+        .describe("Generate SVG line chart visualization (default: false)"),
     },
-    async ({ queries, startTime, endTime, requestedDataPoints, maxDataPoints, maxTotalDataPoints, desiredQuantizationInSecs }) => {
+    async ({ queries, startTime, endTime, requestedDataPoints, maxDataPoints, maxTotalDataPoints, desiredQuantizationInSecs, renderChart }) => {
       try {
         const accountNames = client.getAllAccountNames();
         if (accountNames.length === 0) {
@@ -410,6 +439,7 @@ export function registerMetricsTools(
         );
 
         const sections: string[] = [];
+        const chartPaths: string[] = [];
         for (let i = 0; i < accountNames.length; i++) {
           const name = accountNames[i];
           const deployment = accountDeployments.get(name) ?? "unknown";
@@ -419,6 +449,18 @@ export function registerMetricsTools(
             sections.push(
               `=== Account: ${name} (${deployment}) ===\n${formatMetricsResponse(result.value)}`
             );
+            if (renderChart && result.value.response) {
+              for (const qr of result.value.response) {
+                const chartData = metricsResponseToChartData(qr);
+                if (chartData) {
+                  chartData.title = `${name} (${deployment}) — ${chartData.title}`;
+                  const svg = generateLineChartSvg(chartData);
+                  if (svg) {
+                    chartPaths.push(writeSvgToTempFile(svg, `sumo-metrics-chart-${name}`));
+                  }
+                }
+              }
+            }
           } else {
             const errMsg = result.reason instanceof Error
               ? result.reason.message
@@ -427,13 +469,13 @@ export function registerMetricsTools(
           }
         }
 
+        let text = sections.join("\n\n");
+        if (chartPaths.length > 0) {
+          text += `\n\nCharts saved to:\n${chartPaths.join("\n")}`;
+        }
+
         return {
-          content: [
-            {
-              type: "text" as const,
-              text: sections.join("\n\n"),
-            },
-          ],
+          content: [{ type: "text" as const, text }],
         };
       } catch (err) {
         return {
