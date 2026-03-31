@@ -258,12 +258,12 @@ export function registerSearchJobTools(
       timeout: z
         .number()
         .optional()
-        .describe("Max seconds to wait for query completion (default: 120, max: 600)"),
+        .describe("Max seconds to wait for query completion (default: 120, max: 1800)"),
     },
     async ({ account, query, from, to, timeZone, limit, byReceiptTime, renderChart, timeout }) => {
       try {
         const resultLimit = Math.min(limit ?? 100, 10000);
-        const pollTimeout = Math.min((timeout ?? 120) * 1000, 600_000);
+        const pollTimeout = Math.min((timeout ?? 120) * 1000, 1_800_000);
         const finalQuery = addLimitIfNeeded(query, resultLimit);
 
         // 1. Create job
@@ -566,7 +566,7 @@ export function registerSearchJobTools(
       timeout: z
         .number()
         .optional()
-        .describe("Max seconds to wait for query completion (default: 120, max: 600)"),
+        .describe("Max seconds to wait for query completion (default: 120, max: 1800)"),
     },
     async ({ query, from, to, timeZone, limit, byReceiptTime, renderChart, timeout }) => {
       try {
@@ -584,7 +584,7 @@ export function registerSearchJobTools(
         }
 
         const resultLimit = Math.min(limit ?? 100, 10000);
-        const pollTimeout = Math.min((timeout ?? 120) * 1000, 600_000);
+        const pollTimeout = Math.min((timeout ?? 120) * 1000, 1_800_000);
         const searchParams = {
           query,
           from: resolveTimeToISO(from),
