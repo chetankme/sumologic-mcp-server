@@ -46,11 +46,12 @@ function addLimitIfNeeded(query: string, limit: number): string {
 async function pollUntilDone(
   client: SumoClient,
   jobId: string,
-  accountName: string
+  accountName: string,
+  timeoutMs: number = POLL_TIMEOUT_MS
 ): Promise<SearchJobStatus> {
   const start = Date.now();
 
-  while (Date.now() - start < POLL_TIMEOUT_MS) {
+  while (Date.now() - start < timeoutMs) {
     const status = await client.get<SearchJobStatus>(
       `/v1/search/jobs/${jobId}`,
       undefined,
@@ -81,7 +82,7 @@ async function pollUntilDone(
     // best-effort cleanup
   }
   throw new Error(
-    `Search job timed out after ${POLL_TIMEOUT_MS / 1000}s. The query may be too broad.`
+    `Search job timed out after ${timeoutMs / 1000}s. The query may be too broad. Try increasing the timeout parameter.`
   );
 }
 
@@ -157,6 +158,7 @@ async function searchForAccount(
     timeZone: string;
     limit: number;
     byReceiptTime: boolean;
+    timeoutMs: number;
   }
 ): Promise<SearchAccountResult> {
   const finalQuery = addLimitIfNeeded(params.query, params.limit);
@@ -175,7 +177,7 @@ async function searchForAccount(
   const jobId = job.id;
 
   try {
-    const status = await pollUntilDone(client, jobId, accountName);
+    const status = await pollUntilDone(client, jobId, accountName, params.timeoutMs);
 
     let resultText: string;
     let records: SearchRecordsResponse | undefined;
@@ -253,10 +255,15 @@ export function registerSearchJobTools(
         .boolean()
         .optional()
         .describe("Generate SVG chart visualization for aggregate results (default: false)"),
+      timeout: z
+        .number()
+        .optional()
+        .describe("Max seconds to wait for query completion (default: 120, max: 600)"),
     },
-    async ({ account, query, from, to, timeZone, limit, byReceiptTime, renderChart }) => {
+    async ({ account, query, from, to, timeZone, limit, byReceiptTime, renderChart, timeout }) => {
       try {
         const resultLimit = Math.min(limit ?? 100, 10000);
+        const pollTimeout = Math.min((timeout ?? 120) * 1000, 600_000);
         const finalQuery = addLimitIfNeeded(query, resultLimit);
 
         // 1. Create job
@@ -276,7 +283,7 @@ export function registerSearchJobTools(
 
         try {
           // 2. Poll until done
-          const status = await pollUntilDone(client, jobId, account);
+          const status = await pollUntilDone(client, jobId, account, pollTimeout);
 
           // 3. Fetch results - records if aggregation, messages otherwise
           let resultText: string;
@@ -556,8 +563,12 @@ export function registerSearchJobTools(
         .boolean()
         .optional()
         .describe("Generate SVG chart visualization for aggregate results (default: false)"),
+      timeout: z
+        .number()
+        .optional()
+        .describe("Max seconds to wait for query completion (default: 120, max: 600)"),
     },
-    async ({ query, from, to, timeZone, limit, byReceiptTime, renderChart }) => {
+    async ({ query, from, to, timeZone, limit, byReceiptTime, renderChart, timeout }) => {
       try {
         const accountNames = client.getAllAccountNames();
         if (accountNames.length === 0) {
@@ -573,6 +584,7 @@ export function registerSearchJobTools(
         }
 
         const resultLimit = Math.min(limit ?? 100, 10000);
+        const pollTimeout = Math.min((timeout ?? 120) * 1000, 600_000);
         const searchParams = {
           query,
           from: resolveTimeToISO(from),
@@ -580,6 +592,7 @@ export function registerSearchJobTools(
           timeZone: timeZone ?? "UTC",
           limit: resultLimit,
           byReceiptTime: byReceiptTime ?? false,
+          timeoutMs: pollTimeout,
         };
 
         const accounts = configManager.listAccounts();
