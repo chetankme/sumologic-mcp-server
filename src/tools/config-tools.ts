@@ -9,7 +9,7 @@ export function registerConfigTools(
 ): void {
   server.tool(
     "configure_sumo_accounts",
-    "Open the Sumo Logic MCP config file (~/.sumologic/mcp-config.json) in the system default editor",
+    "Open the Sumo Logic MCP config file (~/.sumologic/access-keys.json, falling back to ~/.sumologic/mcp-config.json) in the system default editor",
     {},
     async () => {
       const configPath = configManager.getConfigPath();

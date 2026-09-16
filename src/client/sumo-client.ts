@@ -62,7 +62,7 @@ export class SumoClient {
   }
 
   getAllAccountNames(): string[] {
-    return this.configManager.listAccounts().map(a => a.name);
+    return this.configManager.listValidAccountNames();
   }
 
   private buildAuthHeader(account: AccountConfig): string {
