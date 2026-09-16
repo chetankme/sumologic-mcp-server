@@ -27,6 +27,8 @@ function resolveTimeToISO(time: string): string {
   return new Date(Date.now() - value * multipliers[unit]).toISOString().replace(/\.\d{3}Z$/, 'Z');
 }
 
+const DEFAULT_TIME_ZONE = process.env.SUMO_TIMEZONE ?? "America/Los_Angeles";
+
 const POLL_TIMEOUT_MS = 120_000;
 const POLL_INTERVAL_MS = 2_000;
 
@@ -240,10 +242,6 @@ export function registerSearchJobTools(
         .describe(
           "End time — ISO 8601 (e.g. '2024-01-01T01:00:00Z') or relative (e.g. '-0m')"
         ),
-      timeZone: z
-        .string()
-        .optional()
-        .describe("Time zone (default: UTC), e.g. 'America/Los_Angeles'"),
       limit: z
         .number()
         .optional()
@@ -261,7 +259,7 @@ export function registerSearchJobTools(
         .optional()
         .describe("Max seconds to wait for query completion (default: 120, max: 1800)"),
     },
-    async ({ account, query, from, to, timeZone, limit, byReceiptTime, renderChart, timeout }) => {
+    async ({ account, query, from, to, limit, byReceiptTime, renderChart, timeout }) => {
       try {
         const resultLimit = Math.min(limit ?? 100, 10000);
         const pollTimeout = Math.min((timeout ?? 120) * 1000, 1_800_000);
@@ -274,7 +272,7 @@ export function registerSearchJobTools(
             query: finalQuery,
             from: resolveTimeToISO(from),
             to: resolveTimeToISO(to),
-            timeZone: timeZone ?? "UTC",
+            timeZone: DEFAULT_TIME_ZONE,
             byReceiptTime: byReceiptTime ?? false,
           },
           account
@@ -360,13 +358,12 @@ export function registerSearchJobTools(
       query: z.string().describe("Sumo Logic query string"),
       from: z.string().describe("Start time — ISO 8601 (e.g. '2024-01-01T00:00:00Z') or relative (e.g. '-15m', '-1h', '-1d')"),
       to: z.string().describe("End time — ISO 8601 (e.g. '2024-01-01T01:00:00Z') or relative (e.g. '-0m')"),
-      timeZone: z.string().optional().describe("Time zone (default: UTC)"),
       byReceiptTime: z
         .boolean()
         .optional()
         .describe("Use receipt time (default: false)"),
     },
-    async ({ account, query, from, to, timeZone, byReceiptTime }) => {
+    async ({ account, query, from, to, byReceiptTime }) => {
       try {
         const job = await client.post<CreateSearchJobResponse>(
           "/v1/search/jobs",
@@ -374,7 +371,7 @@ export function registerSearchJobTools(
             query,
             from: resolveTimeToISO(from),
             to: resolveTimeToISO(to),
-            timeZone: timeZone ?? "UTC",
+            timeZone: DEFAULT_TIME_ZONE,
             byReceiptTime: byReceiptTime ?? false,
           },
           account
@@ -552,10 +549,6 @@ export function registerSearchJobTools(
         .describe(
           "End time — ISO 8601 (e.g. '2024-01-01T01:00:00Z') or relative (e.g. '-0m')"
         ),
-      timeZone: z
-        .string()
-        .optional()
-        .describe("Time zone (default: UTC), e.g. 'America/Los_Angeles'"),
       limit: z
         .number()
         .optional()
@@ -573,7 +566,7 @@ export function registerSearchJobTools(
         .optional()
         .describe("Max seconds to wait for query completion (default: 120, max: 1800)"),
     },
-    async ({ query, from, to, timeZone, limit, byReceiptTime, renderChart, timeout }) => {
+    async ({ query, from, to, limit, byReceiptTime, renderChart, timeout }) => {
       try {
         const accountNames = client.getAllAccountNames();
         if (accountNames.length === 0) {
@@ -594,7 +587,7 @@ export function registerSearchJobTools(
           query,
           from: resolveTimeToISO(from),
           to: resolveTimeToISO(to),
-          timeZone: timeZone ?? "UTC",
+          timeZone: DEFAULT_TIME_ZONE,
           limit: resultLimit,
           byReceiptTime: byReceiptTime ?? false,
           timeoutMs: pollTimeout,

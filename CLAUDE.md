@@ -79,6 +79,7 @@ The config directory is auto-created on first write. Use `configure_sumo_account
 | Variable | Default | Description |
 |---|---|---|
 | `SUMO_ENABLE_LOW_LEVEL_TOOLS` | `false` | Set to `true` to expose the 4 low-level search job tools (`sumo_create_search_job`, `sumo_get_search_job_status`, `sumo_get_search_job_messages`, `sumo_get_search_job_records`). By default only the high-level `sumo_search` and `sumo_search_all` tools are registered. |
+| `SUMO_TIMEZONE` | `America/Los_Angeles` | Time zone used for all search job tools (`sumo_search`, `sumo_search_all`, and the low-level tools). Not a per-call parameter. |
 
 Example — enable in an MCP client config (i.e ~/.claude.json). 
 Note: Need to provide the absolute path in the args. 
