@@ -2,22 +2,6 @@
 
 ## Installation
 
-Account credentials are stored at `~/.sumologic/access-keys.json` (falls back to the legacy `~/.sumologic/mcp-config.json` if that's the only file present):
-
-```json
-{
-  "accounts": {
-    "longData": {
-      "deployment": "US1",
-      "accessId": "...",
-      "accessKey": "..."
-    }
-  }
-}
-```
-
-The config directory is auto-created on first write. If no config file exists at all, a sample `access-keys.json` with 16 placeholder accounts is created automatically on startup — fill in real `accessId`/`accessKey` values before use. Use `configure_sumo_accounts` to open the resolved config file in your system editor.
-
 Add to Claude Code (i.e `~/.claude.json`) after building — use the absolute path to `dist/index.js`:
 
 ```json
@@ -34,6 +18,22 @@ Add to Claude Code (i.e `~/.claude.json`) after building — use the absolute pa
   }
 }
 ```
+
+Account credentials are stored at `~/.sumologic/access-keys.json` (falls back to the legacy `~/.sumologic/mcp-config.json` if that's the only file present):
+
+```json
+{
+  "accounts": {
+    "longData": {
+      "deployment": "US1",
+      "accessId": "...",
+      "accessKey": "..."
+    }
+  }
+}
+```
+
+The config directory is auto-created on first write. If no config file exists at all, a sample `access-keys.json` with 16 placeholder accounts is created automatically on startup — fill in real `accessId`/`accessKey` values before use. Use `configure_sumo_accounts` to open the resolved config file in your system editor.
 
 ## Build / Dev / Run
 
