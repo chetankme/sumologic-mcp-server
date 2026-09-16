@@ -1,5 +1,18 @@
 # Sumo Logic MCP Server
 
+## Build / Dev / Run
+
+```bash
+npm install       # Install dependencies (run once after clone or when package.json changes)
+npm run build     # TypeScript compile (tsc) -> dist/
+npm run dev       # Run from source via tsx (npx tsx src/index.ts)
+npm start         # Run compiled output (node dist/index.js)
+```
+
+No test framework is configured. The project uses TypeScript 5.9+ targeting ES2022 with Node16 module resolution.
+
+**Always run `npm run build` after any code changes.**
+
 ## Installation
 
 Add to Claude Code (i.e `~/.claude.json`) after building — use the absolute path to `dist/index.js`:
@@ -34,19 +47,6 @@ Account credentials are stored at `~/.sumologic/access-keys.json` (falls back to
 ```
 
 The config directory is auto-created on first write. If no config file exists at all, a sample `access-keys.json` with 16 placeholder accounts is created automatically on startup — fill in real `accessId`/`accessKey` values before use. Use `configure_sumo_accounts` to open the resolved config file in your system editor.
-
-## Build / Dev / Run
-
-```bash
-npm install       # Install dependencies (run once after clone or when package.json changes)
-npm run build     # TypeScript compile (tsc) -> dist/
-npm run dev       # Run from source via tsx (npx tsx src/index.ts)
-npm start         # Run compiled output (node dist/index.js)
-```
-
-No test framework is configured. The project uses TypeScript 5.9+ targeting ES2022 with Node16 module resolution.
-
-**Always run `npm run build` after any code changes.**
 
 MCP (Model Context Protocol) server that exposes Sumo Logic Search, Log, and Metrics APIs as tools for AI assistants.
 
