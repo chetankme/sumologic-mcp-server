@@ -18,6 +18,23 @@ Account credentials are stored at `~/.sumologic/access-keys.json` (falls back to
 
 The config directory is auto-created on first write. If no config file exists at all, a sample `access-keys.json` with 16 placeholder accounts is created automatically on startup — fill in real `accessId`/`accessKey` values before use. Use `configure_sumo_accounts` to open the resolved config file in your system editor.
 
+Add to Claude Code (i.e `~/.claude.json`) after building — use the absolute path to `dist/index.js`:
+
+```json
+{
+  "mcpServers": {
+    "sumologic": {
+      "command": "node",
+      "args": ["${absolute_path}/mcp_server/dist/index.js"],
+      "env": {
+        "SUMO_ENABLE_LOW_LEVEL_TOOLS": "false",
+        "SUMO_TIMEZONE": "America/Los_Angeles"
+      }
+    }
+  }
+}
+```
+
 ## Build / Dev / Run
 
 ```bash
