@@ -1,6 +1,22 @@
 # Sumo Logic MCP Server
 
-MCP (Model Context Protocol) server that exposes Sumo Logic Search, Log, and Metrics APIs as tools for AI assistants.
+## Installation
+
+Account credentials are stored at `~/.sumologic/access-keys.json` (falls back to the legacy `~/.sumologic/mcp-config.json` if that's the only file present):
+
+```json
+{
+  "accounts": {
+    "longData": {
+      "deployment": "US1",
+      "accessId": "...",
+      "accessKey": "..."
+    }
+  }
+}
+```
+
+The config directory is auto-created on first write. If no config file exists at all, a sample `access-keys.json` with 16 placeholder accounts is created automatically on startup — fill in real `accessId`/`accessKey` values before use. Use `configure_sumo_accounts` to open the resolved config file in your system editor.
 
 ## Build / Dev / Run
 
@@ -14,6 +30,8 @@ npm start         # Run compiled output (node dist/index.js)
 No test framework is configured. The project uses TypeScript 5.9+ targeting ES2022 with Node16 module resolution.
 
 **Always run `npm run build` after any code changes.**
+
+MCP (Model Context Protocol) server that exposes Sumo Logic Search, Log, and Metrics APIs as tools for AI assistants.
 
 ## Project Structure
 
@@ -56,53 +74,12 @@ src/
 - **Logging**: Use `console.error()` for logging — stdout is reserved for the MCP stdio protocol.
 - **Search job lifecycle**: `sumo_search` is a high-level tool that creates a job, polls until done (120s timeout with exponential backoff), fetches results, and cleans up. The low-level tools (`sumo_create_search_job`, `sumo_get_search_job_status`, etc.) expose individual steps but are hidden by default (see Environment Variables below).
 
-## Configuration
-
-Account credentials are stored at `~/.sumologic/access-keys.json` (falls back to the legacy `~/.sumologic/mcp-config.json` if that's the only file present):
-
-```json
-{
-  "accounts": {
-    "longData": {
-      "deployment": "US1",
-      "accessId": "...",
-      "accessKey": "..."
-    }
-  }
-}
-```
-
-The config directory is auto-created on first write. If no config file exists at all, a sample `access-keys.json` with 16 placeholder accounts is created automatically on startup — fill in real `accessId`/`accessKey` values before use. Use `configure_sumo_accounts` to open the resolved config file in your system editor.
-
 ## Environment Variables
 
 | Variable | Default | Description |
 |---|---|---|
-| `SUMO_ENABLE_LOW_LEVEL_TOOLS` | `false` | Set to `true` to expose the 4 low-level search job tools (`sumo_create_search_job`, `sumo_get_search_job_status`, `sumo_get_search_job_messages`, `sumo_get_search_job_records`). By default only the high-level `sumo_search` and `sumo_search_all` tools are registered. |
-| `SUMO_TIMEZONE` | `America/Los_Angeles` | Time zone used for all search job tools (`sumo_search`, `sumo_search_all`, and the low-level tools). Not a per-call parameter. |
-
-Example — enable in an MCP client config (i.e ~/.claude.json). 
-Note: Need to provide the absolute path in the args. 
-
-```json
-{
-  "mcpServers": {
-    "sumologic": {
-      "command": "node",
-      "args": ["${absolute_path}/mcp_server/dist/index.js"],
-      "env": {
-        "SUMO_ENABLE_LOW_LEVEL_TOOLS": "false"
-      }
-    }
-  }
-}
-```
-
-Or via the command line:
-
-```bash
-SUMO_ENABLE_LOW_LEVEL_TOOLS=true npm start
-```
+| `SUMO_ENABLE_LOW_LEVEL_TOOLS` | `false` | `true` exposes the 4 low-level search job tools alongside `sumo_search`/`sumo_search_all`. |
+| `SUMO_TIMEZONE` | `America/Los_Angeles` | Time zone for all search job tools; not a per-call parameter. |
 
 ## Code Conventions
 
