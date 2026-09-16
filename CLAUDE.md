@@ -23,7 +23,7 @@ src/
   client/
     sumo-client.ts            # HTTP client with rate limiting (4 req/s) and retry logic
   config/
-    config-manager.ts         # Reads/writes ~/.sumologic/mcp-config.json
+    config-manager.ts         # Reads ~/.sumologic/access-keys.json (fallback: mcp-config.json)
     deployments.ts            # Maps deployment regions (US1, US2, EU, etc.) to API base URLs
   tools/
     config-tools.ts           # Account configuration tools (configure, list)
@@ -45,7 +45,7 @@ src/
 ### Architecture (4 layers)
 
 1. **Entry** (`index.ts`) — Creates `McpServer`, initializes `ConfigManager` and `SumoClient`, registers tool groups, connects `StdioServerTransport`.
-2. **Config** (`config/`) — Manages multi-account configuration persisted to `~/.sumologic/mcp-config.json`. Supports 10 public deployment regions (AU, CA, DE, EU, FED, IN, JP, KR, US1, US2); unrecognized region codes fall back to a derived URL.
+2. **Config** (`config/`) — Manages multi-account configuration read from `~/.sumologic/access-keys.json`, falling back to the legacy `~/.sumologic/mcp-config.json` if the primary file doesn't exist. If neither exists, a sample `access-keys.json` (16 placeholder accounts) is created on startup. The config is re-read from disk on every lookup, so manual edits take effect without restarting the server. Accounts with placeholder (`"..."`) credentials raise an error when used directly but are silently skipped by the `_all` fan-out tools. Supports 10 public deployment regions (AU, CA, DE, EU, FED, IN, JP, KR, US1, US2); unrecognized region codes fall back to a derived URL.
 3. **Client** (`client/sumo-client.ts`) — Stateless HTTP client using `fetch`. Handles Basic auth, token-bucket rate limiting, exponential backoff retries (max 3), and 429/5xx handling.
 4. **Tools** (`tools/`) — Each file exports a `register*Tools(server, client|configManager)` function that calls `server.tool()` to register MCP tools with Zod input schemas.
 
@@ -58,7 +58,7 @@ src/
 
 ## Configuration
 
-Account credentials are stored at `~/.sumologic/mcp-config.json`:
+Account credentials are stored at `~/.sumologic/access-keys.json` (falls back to the legacy `~/.sumologic/mcp-config.json` if that's the only file present):
 
 ```json
 {
@@ -72,7 +72,7 @@ Account credentials are stored at `~/.sumologic/mcp-config.json`:
 }
 ```
 
-The config directory is auto-created on first write. Use `configure_sumo_accounts` to open the config file in your system editor.
+The config directory is auto-created on first write. If no config file exists at all, a sample `access-keys.json` with 16 placeholder accounts is created automatically on startup — fill in real `accessId`/`accessKey` values before use. Use `configure_sumo_accounts` to open the resolved config file in your system editor.
 
 ## Environment Variables
 

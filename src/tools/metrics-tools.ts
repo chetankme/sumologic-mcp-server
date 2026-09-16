@@ -406,7 +406,7 @@ export function registerMetricsTools(
             content: [
               {
                 type: "text" as const,
-                text: "No accounts configured.",
+                text: `No accounts with valid credentials configured (placeholder accounts are skipped). Edit ${configManager.getConfigPath()}.`,
               },
             ],
             isError: true,
